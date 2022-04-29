@@ -1,5 +1,7 @@
 # CastNet
-Turn your URL requests into Cypher!
+Turn your URL requests into Cypher! Did you ever want to use a REST web interface to update Graph database records (and retrieve via GraphQL), but didn't want to handle each individual endpoint on a server? Then this might be for you!
+
+`pip install castnet`
 
 CastNet is a REST-CRUD middleware package designed for interacting with a Neo4j Graph Database through a web server, automatically routing and transforming requests from the front end into CYPHER queries. Castnet automatically handles
 * Create: POST
@@ -27,7 +29,53 @@ CastNet supports:
 2. Define a URL/Label table
 3. Plug in to your REST backend (Tested with Flask)
 
-## Example overview
+## Minimal Example
+`{'id': str, 'name': str, and 'description': str}` are automatically included in the schema.
+```Python
+import json
+from flask import Flask, request
+from castnet import CastNetConn
+def make_response(response, status=200):
+    return (json.dumps(response), status, {"Access-Control-Allow-Origin": "*"})
+SCHEMA = {"Person" :{}}
+URL_KEY = {"people": "person"}
+CONN = CastNetConn("database_uri", "username", "password", SCHEMA, URL_KEY)
+app = Flask(__name__)
+@app.route("/<path:path>", methods=["POST", "PATCH", "OPTIONS", "DELETE"])
+def main(**_):
+    path_params = CONN.get_path(request.path)
+    if path_params[0] == "graphql":
+        return make_response(*CONN.generic_graphql(request))
+    if request.method == "POST":
+        return make_response(*CONN.generic_post(request))
+    if request.method == "PATCH":
+        return make_response(*CONN.generic_patch(request))
+    if request.method == "DELETE":
+        return make_response(*CONN.generic_delete(request))
+app.run(debug=True)
+```
+Create a Person:
+```
+curl -X POST localhost:5000/people -H 'Content-Type: application/json' 
+  -d '{"name":"Alice", "description":"Pretty nice."}'
+```
+Retrieve People (Post to the GraphQL endpoint)
+```
+curl -X POST localhost:5000/graphql -H 'Content-Type: application/json' 
+  -d '{"qeury":"Person{id name description}"}'
+```
+Update a Person (IDs and Names are immutable):
+```
+curl -X POST localhost:5000/people/<Alice's ID> -H 'Content-Type: application/json' 
+  -d '{"description":"Actually really nice."}'
+```
+Delete a Person:
+```
+curl -X DELETE localhost:5000/people/<Alice's ID>
+```
+
+
+## More Complicated Example
 Let's say we want to create a database to handle easy updates to a Bird tracker at various birdfeeders, at multiple houses, each with multiple feeders. One possible way to have a database is by making a hierarcheical database, starting with Houses. And, we may want a running list of birds and know when/where they were seen. Most importantly, we want to build a snazzy web based front end, and don't want to make a dedicated endpoint for each update.
 
 The database entries, with their hierarchies might look something like this:
@@ -48,7 +96,7 @@ The database entries, with their hierarchies might look something like this:
 * Ruby-Throated Hummingbird (Bird)
 * Ivory-Billed Woodpecker (Bird)
 
-We have two Houses, 3 Feeders, and 6 observations (FeederScan) and 2 birds in the database. In this designed, we could build a schema like so:
+We have two Houses, 3 Feeders, and 6 observations (FeederScan) and 2 birds in the database. In this design, we could build a schema like so:
 
 ```python
 from datetime import datetime
