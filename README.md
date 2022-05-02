@@ -12,10 +12,11 @@ Each node by default has an automatically generated ID, a user-specified name wh
 CastNet managed databases support:
 * Automatic conversion of Route -> node_label/node_id
 * Automatic conversion of Json->PythonTypes->Neo4jTypes 
-* Managed Hierarchy
+* Managed (Optional) Hierarchy
 * Ordered Relationships
 * Label-level `name` unique constraints (for hierarchy)
 * Simple GraphQL Read-only endpoint
+* Immutable URI path compatible node IDs for filesystem/cloud integration
 
 And Coming soon:
 * Logging function to record changes
@@ -74,10 +75,15 @@ Delete a Person:
 ```
 curl -X DELETE localhost:5000/people/<Alice's ID>
 ```
-
+And from the back end, there are manual endpoints, such as 
+```
+results = CONN.read_cypher(cypher, **params)
+results = CONN.write_cypher(cypher, **params)
+results = CONN.read_graphql(graphql, **params)
+```
 
 ## More Complicated Example
-Let's say we want to create a database to handle easy updates to a Bird tracker at various birdfeeders, at multiple houses, each with multiple feeders. One possible way to have a database is by making a hierarcheical database, starting with Houses. And, we may want a running list of birds and know when/where they were seen. Most importantly, we want to build a snazzy web based front end, and don't want to make a dedicated endpoint for each update.
+Let's say we want to create a database to handle easy updates to a Bird tracker at various birdfeeders, at multiple houses, each with multiple feeders. One possible way to have a database is by making a hierarchical database, starting with Houses. And, we may want a running list of birds and know when/where they were seen. Most importantly, we want to build a snazzy web based front end, and don't want to make a dedicated endpoint for each update.
 
 The database entries, with their hierarchies might look something like this:
 
@@ -125,7 +131,7 @@ SCHEMA = {
   },
 }
 ```
-and tie it in to our url scheme
+and tie it in to our url schema
 ```python
 URL_KEY = {
     "birds": "Bird",

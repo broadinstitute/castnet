@@ -13,9 +13,12 @@ setup(
     packages=find_packages('.'),
     version=__version__,
     license='MIT',
-    description='CastNet is a schema based low level Neo4j connection interaction library your Python back end, enabling easy type conversions and generalized CRUD endpoints (including GraphQL).',
+    description='CastNet is a schema based low level Neo4j connection interaction library your Python back end,'
+                ' enabling easy type conversions and generalized CRUD endpoints (including GraphQL).',
     author='Daniel S. Hitchcock',
     author_email="daniel.s.hitchcock@gmail.com",
+    long_description_content_type="text/markdown",
+    long_description=LONG_DESCRIPTION,
     keywords=['Neo4j', 'REST', 'graphdb', 'CRUD', 'graphql'],
     install_requires=["neo4j", 'shortuuid'],
     classifiers=[
