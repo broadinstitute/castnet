@@ -4,7 +4,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.4"
+__version__ = "0.0.7"
 
 
 class CastNetConn:

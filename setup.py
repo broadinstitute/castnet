@@ -23,12 +23,9 @@ def get_version(rel_path):
 with open(os.path.join(HERE, 'README.md'), encoding='utf-8') as f:
     LONG_DESCRIPTION = f.read()
 
-with open(os.path.join(HERE, 'requirements.txt')) as f:
-    REQUIREMENTS = f.read().splitlines()
-
 setup(
     name="castnet",
-    install_requires=REQUIREMENTS,
+    install_requires=['neo4j', 'shortuuid'],
     packages=find_packages('.'),
     version=get_version("castnet/__init__.py"),
     license='MIT',
