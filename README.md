@@ -1,28 +1,25 @@
 # CastNet
-Turn your URL requests into Cypher! Did you ever want to use a REST web interface to update Graph database records (and retrieve via GraphQL), but didn't want to handle each individual endpoint on a server? Then this might be for you!
+*** This package is in the very early stages of testing. Do not use for production. ***
 
 `pip install castnet`
 
-CastNet is a REST-CRUD middleware package designed for interacting with a Neo4j Graph Database through a web server, automatically routing and transforming requests from the front end into CYPHER queries. Castnet automatically handles
-* Create: POST
-* Update: PATCH
-* Delete: DELETE
+CastNet is a schema based low level Neo4j connection interaction library your Python back end, enabling easy type conversions and generalized CRUD endpoints (including GraphQL).
 
-...and
+CastNet does not want to take over your backend, it just wants to help out. You still control routing, auth, and deployment.
 
-* Retrieve: GraphQL (Through POST)
+Each node by default has an automatically generated ID, a user-specified name which should be unique to that label, and a description. Incoming URL requests are transformed to their labels by a route-label table and types/relationships are automatically cast from the incoming JSON based on a schema. 
 
-Incoming URL requests are transformed to their labels by a route-label table and types/relationships are automatically cast from the incoming JSON based on a schema.
+CastNet managed databases support:
+* Automatic conversion of Route -> node_label/node_id
+* Automatic conversion of Json->PythonTypes->Neo4jTypes 
+* Managed Hierarchy
+* Ordered Relationships
+* Label-level `name` unique constraints (for hierarchy)
+* Simple GraphQL Read-only endpoint
 
-Each node by default has an automatically generated ID, a user-specified name which should be unique to that label, and a description.
-
-CastNet supports:
-* Attributes
-* Relationships (and preserves order of same-label nodes!)
-* Hierarchies
-* Simple GraphQL
-* Per-label basis `name` uniqueness
-* Logging function to record changes.
+And Coming soon:
+* Logging function to record changes
+* Callbacks for custom behavior
 
 ## How to Use
 1. Define a schema
@@ -30,17 +27,20 @@ CastNet supports:
 3. Plug in to your REST backend (Tested with Flask)
 
 ## Minimal Example
-`{'id': str, 'name': str, and 'description': str}` are automatically included in the schema.
+`{'id': str, 'name': str, and 'description': str}` are automatically created in the schema.
 ```Python
 import json
 from flask import Flask, request
 from castnet import CastNetConn
+
 def make_response(response, status=200):
     return (json.dumps(response), status, {"Access-Control-Allow-Origin": "*"})
+
 SCHEMA = {"Person" :{}}
 URL_KEY = {"people": "person"}
 CONN = CastNetConn("database_uri", "username", "password", SCHEMA, URL_KEY)
 app = Flask(__name__)
+
 @app.route("/<path:path>", methods=["POST", "PATCH", "OPTIONS", "DELETE"])
 def main(**_):
     path_params = CONN.get_path(request.path)
@@ -52,6 +52,7 @@ def main(**_):
         return make_response(*CONN.generic_patch(request))
     if request.method == "DELETE":
         return make_response(*CONN.generic_delete(request))
+    
 app.run(debug=True)
 ```
 Create a Person:
@@ -62,7 +63,7 @@ curl -X POST localhost:5000/people -H 'Content-Type: application/json'
 Retrieve People (Post to the GraphQL endpoint)
 ```
 curl -X POST localhost:5000/graphql -H 'Content-Type: application/json' 
-  -d '{"qeury":"Person{id name description}"}'
+  -d '{"query":"Person{id name description}"}'
 ```
 Update a Person (IDs and Names are immutable):
 ```
@@ -100,12 +101,9 @@ We have two Houses, 3 Feeders, and 6 observations (FeederScan) and 2 birds in th
 
 ```python
 from datetime import datetime
-from castnet import CastNetConn
-
 # NOTE: {'id': str, 'name': str, and 'description': str} is automatically added to attributes
 # If there is the "IS_IN" rel, then an automatic "isIn" GraphQL endpoint is created.
 SCHEMA = {
-  
   "House": {},
   "Feeder": {
     "attributes": {"feederType": str, "feederHeight": float, "seedType": str, "dateInstalled": datetime},
@@ -115,7 +113,9 @@ SCHEMA = {
     "attributes": {"scanTime": datetime, "feederHeight": float, "seedType": str, "dateInstalled": datetime},
     "relationships": {"BIRDS_OBSERVED": ["Bird"]},
     "IS_IN": "Feeder",
-    "graphql": {"rel": "BIRDS_OBSERVED", "dir": "OUT", "lab": "Bird"}
+    "graphql":{
+      "birdsObserved": {"rel": "BIRDS_OBSERVED", "dir": "OUT", "lab": "Bird"}
+    }
   },
   "Bird": {
     "attributes": {"favoriteFood": str},
@@ -131,7 +131,7 @@ URL_KEY = {
     "birds": "Bird",
     "houses": "House",
     "birdfeeders": "Feeder",
-    "birdscan": "Scan",
+    "feederscans": "Scan",
 }
 ```
 
@@ -171,7 +171,7 @@ And assuming the birds are added, add a scan
 Method: POST
 URL: /birdserver/feederscans
 JSON: "{'name': 'Day1', 'timeStamp': "2022-04-22': 'IS_IN': 'Feeder_20220429_gardenfeeder_abcd',
-        'BIRDS_OBSERVED': ['Feeder_20220429_ivorybilledwoodpecker_abcd', Feeder_20220429_bluejay_abcd]}"
+        'BIRDS_OBSERVED': ['Bird_20220429_ivorybilledwoodpecker_abcd', Bird_20220429_bluejay_abcd]}"
 ```
 ```Cypher
 MATCH
@@ -191,9 +191,11 @@ Or remove the Ivory-Billed Woodpecker by updating with just a bluejay...
 ```
 Method: PATCH
 URL: /birdserver/scans/Scan_20220429_day1_abcd
-JSON: "{'BIRDS_OBSERVED': ['Feeder_20220429_bluejay_abcd']}"
+JSON: "{'BIRDS_OBSERVED': ['Bird_20220429_bluejay_abcd']}"
 ```
- 
 
-
-## Schema
+## Current known issues/updates
+* Some operations are not atomic and must be
+* Node ID's might have better format
+* Is a "request" object the best item to pass into the generic endpoints?
+* GraphQL not secure

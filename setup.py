@@ -3,23 +3,24 @@ from setuptools import find_packages
 import os
 from castnet import __version__
 
-current_directory = os.path.dirname(os.path.abspath(__file__))
-try:
-    with open(os.path.join(current_directory, 'README.md'), encoding='utf-8') as f:
-        long_description = f.read()
-except Exception:
-    long_description = ''
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(HERE, 'README.md'), encoding='utf-8') as f:
+    LONG_DESCRIPTION = f.read()
 
 setup(
     name="castnet",
     packages=find_packages('.'),
     version=__version__,
     license='MIT',
-    description='',
-    long_description = long_description,
-    long_description_context_type = 'text/markdown',
+    description='CastNet is a schema based low level Neo4j connection interaction library your Python back end, enabling easy type conversions and generalized CRUD endpoints (including GraphQL).',
     author='Daniel S. Hitchcock',
-    keywords=['Neo4j', 'REST', 'graphdb', 'CRUD', 'graph'],
-    install_requires=[],
-    classifiers=[]
+    author_email="daniel.s.hitchcock@gmail.com",
+    keywords=['Neo4j', 'REST', 'graphdb', 'CRUD', 'graphql'],
+    install_requires=["neo4j", 'shortuuid'],
+    classifiers=[
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+    ],
+    url="https://github.com/broadinstitute/castnet"
 )

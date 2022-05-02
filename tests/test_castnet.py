@@ -259,10 +259,10 @@ def test_check_dependencies():
     Test for checking existing dependencies before deleting
     """
     resource_type = "instruments"
-    query = CONN.check_dependencies(resource_type)
+    query = CONN._check_dependencies(resource_type)
     assert query == ""
     resource_type = "projects"
-    query = CONN.check_dependencies(resource_type)
+    query = CONN._check_dependencies(resource_type)
     assert (
         query
         == """MATCH (main:Project{id: $id})<-[:IS_IN]-(d1:SampleSet)
@@ -270,7 +270,7 @@ RETURN d1 as deps"""
     )
 
     resource_type = "samplesets"
-    query = CONN.check_dependencies(resource_type)
+    query = CONN._check_dependencies(resource_type)
     assert (
         query
         == """MATCH (main:SampleSet{id: $id})<-[:IS_IN]-(d1:InjectionSet)
@@ -299,8 +299,7 @@ Project(id: $id){
     Instrument{name injectionSets{name}}
 }
     """
-    query = CONN.strip_query(query)
-    cypher = CONN.gql_to_cypher(CONN.parse_gql(query))
+    cypher = CONN.gql_to_cypher(query)
     assert (
         cypher
         == """CALL {

@@ -1,7 +1,8 @@
 from datetime import datetime, date
 from neo4j import GraphDatabase
-import shortuuid
 import pytz
+import shortuuid
+
 
 __version__ = "0.0.1"
 
@@ -17,11 +18,11 @@ class CastNetConn:
         """
         if uri and user and password:
             self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        self.schema = self.parse_schema(schema)
+        self.schema = self._parse_schema(schema)
         self.url_key = url_key
 
     @staticmethod
-    def parse_schema(schema):
+    def _parse_schema(schema):
         new_schema = {}
 
         # first pass, build the schema
@@ -71,24 +72,8 @@ class CastNetConn:
                     raise Exception(f"Relationship {rel} not found in {lab}")
         return new_schema
 
-    def close(self):
-        """
-        Closes a database
-        """
-        self.driver.close()
-
-    def auto_commit(self, query, **kwargs):
-        """
-        Auto commit, use is discouraged
-        """
-        with self.driver.session() as session:
-            # Write transactions allow the driver to handle retries and transient errors
-            result = session.run(query, **kwargs)
-
-        return result
-
     @staticmethod
-    def submit_query(tx, query, **kwargs):
+    def _submit_query(tx, query, **kwargs):
         """
         Performs a query to a database.
          Intended to be used by a driver.session()  in read/write methods.
@@ -97,45 +82,9 @@ class CastNetConn:
         result = [r for r in result]  # pylint: disable=unnecessary-comprehension
         return result
 
-    def write(self, query, **kwargs):
-        """
-        Writes to a database, returning any results
-        """
-        with self.driver.session() as session:
-            # Write transactions allow the driver to handle retries and transient errors
-            result = session.write_transaction(self.submit_query, query, **kwargs)
-
-        return result
-
-    def read(self, query, **kwargs):
-        """
-        Reads from a database, returning any results
-        """
-        with self.driver.session() as session:
-            # Write transactions allow the driver to handle retries and transient errors
-            result = session.read_transaction(self.submit_query, query, **kwargs)
-        return result
-
-    def graphql(self, query, **kwargs):
-        """
-        Executes a graphql query with variables
-        Returns a dictionary containing top level labels and data
-        """
-
-        # get ride of the outer "Query" or brackets
-        query = self.strip_query(query)
-        parsed_query = self.parse_gql(query)
-        cypher = self.gql_to_cypher(parsed_query)
-        results = self.read(cypher, **kwargs)
-        for result in results:
-            labels = result.__dict__["_Record__keys"]
-            records = {label: r for (label, r) in zip(labels, result)}
-
-        return records
-
     def request_to_cypher(
         self, label, source_id="", params=None, method="PATCH"
-    ):  # pylint: disable-msg=too-many-locals
+    ):
         """
         Converts a request for PUT/PATCH, based on path, to a valid cypher query and
         its vars.
@@ -231,9 +180,10 @@ class CastNetConn:
         params = {"source_id": source_id}
         return query, params
 
-    def check_dependencies(self, resource_type):
+    def _check_dependencies(self, resource_type):
         """
         Checks dependencies of resource by generating a cypher query to find them
+        Todo: This should some day be atomic with generic_delete, can generate race conditions
         """
         resource_label = self.url_key[resource_type]
         dep_labels = []  # eg. Project, SampleSet
@@ -262,9 +212,67 @@ class CastNetConn:
             return query
         return ""
 
+    def close(self):
+        """
+        Closes a database
+        """
+        self.driver.close()
+
+    def read(self, query, **kwargs):
+        """
+        Reads from a Cypher query
+        """
+        with self.driver.session() as session:
+            # Write transactions allow the driver to handle retries and transient errors
+            result = session.read_transaction(self._submit_query, query, **kwargs)
+        return result
+
+    def write(self, query, **kwargs):
+        """
+        Writes from a cypher query
+        """
+        with self.driver.session() as session:
+            # Write transactions allow the driver to handle retries and transient errors
+            result = session.write_transaction(self._submit_query, query, **kwargs)
+
+        return result
+
+    def auto_commit(self, query, **kwargs):
+        """
+        Auto commit, use is discouraged
+        """
+        with self.driver.session() as session:
+            # Write transactions allow the driver to handle retries and transient errors
+            result = session.run(query, **kwargs)
+
+        return result
+
+    def read_graphql(self, query, **kwargs):
+        """
+        Executes a graphql query with variables
+        Returns a dictionary containing top level labels and data
+        """
+
+        # Convert graphql to cypher
+        cypher = self.gql_to_cypher(query)
+        results = self.read(cypher, **kwargs)
+
+        # convert the top level results to graphql-like response?
+        for result in results:
+            labels = result.__dict__["_Record__keys"]
+            records = {label: r for (label, r) in zip(labels, result)}
+
+        return records
+
+    def gql_to_cypher(self, query):
+        """Converts a GraphQL request to Cypher"""
+        query = self._strip_query(query)
+        parsed_query = self._gql_to_ast(query)
+        return self._ast_to_cypher(parsed_query)
+
     def parse_params(self, label, params):
         """
-        Sanitizes and splits params into relationships and properly casted types
+        Sanitizes and splits params into relationships and properly casted attributes
 
         Example:
         label = 'InjectionSet'
@@ -278,14 +286,14 @@ class CastNetConn:
         }
 
         Return:
-        target_params = [
+        relationship_params = [
             ("LED_BY", "courtney_id"),
             ("USING_METHOD": "hp_id"),
             ("TEST_LIST1": "hp_id"),
             ("TEST_LIST1": "cn_id"),
             ("ON_INSTRUMENT": "")
         ]
-        clean_params = {
+        attribute_params = {
             "num": int("100"),
             "acquisitionStarted": (
                 date.isoformat(date.fromisoformat("2021-01-01"))
@@ -294,19 +302,19 @@ class CastNetConn:
 
 
         """
-        target_params = []
-        clean_params = {}
+        relationship_params = []
+        attribute_params = {}
 
         for key, value in params.items():
             if key in self.schema[label]["attributes"]:
                 param_type = self.schema[label]["attributes"][key]
                 # If there is no value, it is none
                 if not value:
-                    clean_params[key] = None
+                    attribute_params[key] = None
                 # dates are cast to ISO format
                 elif param_type in [datetime, date]:
                     try:
-                        clean_params[key] = param_type.isoformat(
+                        attribute_params[key] = param_type.isoformat(
                             param_type.fromisoformat(value)
                         )
                     except ValueError as err:
@@ -317,7 +325,7 @@ class CastNetConn:
                 # catchall. Value error if it can't be converted
                 else:
                     try:
-                        clean_params[key] = param_type(value)
+                        attribute_params[key] = param_type(value)
                     except ValueError as err:
                         raise ValueError(
                             f"For label '{key}', '{value}' is not suitable. Must be"
@@ -328,18 +336,18 @@ class CastNetConn:
             elif key in self.schema[label]["relationships"]:
                 param_type = self.schema[label]["relationships"][key]
                 if isinstance(param_type, str):
-                    target_params.append((key, value))
+                    relationship_params.append((key, value))
                 elif isinstance(param_type, list):
                     if len(value) == 0:
-                        target_params.append((key, []))
+                        relationship_params.append((key, []))
                     for v_single in value:
-                        target_params.append((key, v_single))
+                        relationship_params.append((key, v_single))
             else:
                 raise Exception(
                     f"Couldn't find {key} in attributes or relations for {label}"
                 )
 
-        return target_params, clean_params
+        return relationship_params, attribute_params
 
     def convert_dtypes(self, value, attr_name, label="Injection"):
         """
@@ -353,6 +361,9 @@ class CastNetConn:
     def generic_post(self, request):
         """
         Creates a new record from a request.
+        request: Flask-Request like object, with attributes
+            json: String, json payload from front end
+            path: String, routing path, e.g "/birdfeeders"
         Returns a tuple with data and expected HTTP status.
         """
         path_params = self.get_path(request.path)
@@ -368,7 +379,7 @@ class CastNetConn:
                 400,
             )
         # check the required resource exists
-        # This should be atomic (but isn't)
+        # Todo this should be atomic (but isn't)
         if "IS_IN" in self.schema[label]["relationships"]:
             req_label = self.schema[label]["relationships"]["IS_IN"]
             if not request.json["IS_IN"]:
@@ -396,6 +407,7 @@ class CastNetConn:
                 return (f"The name {request.json['name']} already exists.", 400)
         else:
             # if it's top level, check that no other resource exists with that name
+            # Todo this should be atomic but isn't
             cypher = f"MATCH (a:{label} {{name: $name}}) RETURN a"
             records = self.read(cypher, name=request.json["name"])
             if len(records) > 0:
@@ -422,6 +434,11 @@ class CastNetConn:
     def generic_patch(self, request):
         """
         Patches a record.
+        request: Flask-Request like object, with attributes
+            json: String, json payload from front end
+            path: String, routing path containg the url label and the resource id
+                e.g. "/birdfeeders/20220101_feeder_backyard_abcd"
+
         Returns a tuple with data and expected HTTP status.
         """
         path_params = self.get_path(request.path)
@@ -452,7 +469,7 @@ class CastNetConn:
         label = self.url_key[path_params[0]]
         path_params = self.get_path(request.path)
         resource_id = path_params[1]
-        dependency_query = self.check_dependencies(path_params[0])
+        dependency_query = self._check_dependencies(path_params[0])
         if dependency_query:
             num_dependencies = len(self.read(dependency_query, id=resource_id))
             if num_dependencies > 0:
@@ -476,7 +493,7 @@ class CastNetConn:
             params = {}
         if not params:
             params = {}
-        results = self.graphql(query, **params)
+        results = self.read_graphql(query, **params)
         return ([True, {"data": results}], 200)
 
     @staticmethod
@@ -488,7 +505,10 @@ class CastNetConn:
         path_params = [p.replace("{forwardSlash}", "/") for p in path_params]
         return path_params
 
-    def gql_to_cypher(self, query, p_varname="a"):
+    #######
+    # Graphql Conversion Functions
+    #######
+    def _ast_to_cypher(self, query, p_varname="a"):
         """Translates graphql ast to cypher"""
         cypher = ""
         # top level, some special rules
@@ -497,7 +517,7 @@ class CastNetConn:
             for i, single_query in enumerate(query):
                 returns.append(single_query["name"])
                 cypher += "CALL {\n"
-                cypher += self.gql_to_cypher(single_query, p_varname=p_varname)
+                cypher += self._ast_to_cypher(single_query, p_varname=p_varname)
                 cypher += "\n}\n"
             cypher += "RETURN " + ",".join(returns)
             return cypher
@@ -522,7 +542,7 @@ class CastNetConn:
         cypher += f"\nUNWIND {c_varname} as {c_varname + '_s'}"
         for rel in relationships:
             cypher += f"\nCALL {{\nWITH {c_varname+'_s'}\n"
-            cypher += self.gql_to_cypher(rel, c_varname)
+            cypher += self._ast_to_cypher(rel, c_varname)
             cypher += "\n}"
 
         # create a return collect with attributes and subqueries
@@ -540,14 +560,14 @@ class CastNetConn:
 
         return cypher
 
-    def parse_gql(self, query_str, label=None):
+    def _gql_to_ast(self, query_str, label=None):
         """
         Parses a graphql request and converts to an ast. See unit tests for example
         """
 
         query_str = query_str.strip("\t\n ")
         attributes = []
-        token_generator = next_token(query_str)
+        token_generator = self._next_token(query_str)
         for token, remaining in token_generator:
             if token is None:
                 break
@@ -591,7 +611,7 @@ class CastNetConn:
                 parsed_subquery.update(
                     {
                         "name": token,
-                        "attributes": self.parse_gql(subquery, new_label),
+                        "attributes": self._gql_to_ast(subquery, new_label),
                         "label": new_label,
                     }
                 )
@@ -607,7 +627,7 @@ class CastNetConn:
         return attributes
 
     @staticmethod
-    def strip_query(query):
+    def _strip_query(query):
         """Quick fix function to strip the "query" out of graphql"""
         query = query.strip("\n\t ")
         # strip open and close brackets if it starts with them or with query
@@ -617,67 +637,67 @@ class CastNetConn:
             query = query[o_bracket + 1 : c_bracket]
         return query
 
+    @staticmethod
+    def _next_token(query):
+        """
+        GraphQL Tokenizer, using a generator. Returns the token and remaining query.
+        """
+        # strip out whitespace and opening/closing brackets
+        query = query.strip("\t\n ")
+        if query.startswith("{"):
+            query = query[query.find("{") + 1 : query.rfind("}")]
 
-def next_token(query):
-    """
-    GraphQL Tokenizer, using a generator. Returns the token and remaining query.
-    """
-    # strip out whitespace and opening/closing brackets
-    query = query.strip("\t\n ")
-    if query.startswith("{"):
-        query = query[query.find("{") + 1 : query.rfind("}")]
+        while len(query) > 0:
+            # find the start of the next token. Whitespace or brackets
+            occurrences = [
+                query.find(x) for x in ["\n", "\t", " ", "{", "("] if query.find(x) > -1
+            ]
+            # if nothing is found, must be last word.
+            if len(occurrences) == 0:
+                word = query
+                query = ""
+                yield word, query
+                continue
 
-    while len(query) > 0:
-        # find the start of the next token. Whitespace or brackets
-        occurrences = [
-            query.find(x) for x in ["\n", "\t", " ", "{", "("] if query.find(x) > -1
-        ]
-        # if nothing is found, must be last word.
-        if len(occurrences) == 0:
-            word = query
-            query = ""
-            yield word, query
-            continue
+            first = min(occurrences)
 
-        first = min(occurrences)
+            # if the first item is a token sepator, use it. it's { or [
+            if first == 0:
+                first = 1
+            word = query[:first]
 
-        # if the first item is a token sepator, use it. it's { or [
-        if first == 0:
-            first = 1
-        word = query[:first]
+            # if it's whitespace, go to the next item
+            if word in [" ", "", "\n", "\t"]:
+                query = query[first:].strip("\t\n ")
+                continue
 
-        # if it's whitespace, go to the next item
-        if word in [" ", "", "\n", "\t"]:
-            query = query[first:].strip("\t\n ")
-            continue
+            # if it's an opening bracket, find the closing bracket and return that. Advance the whole query.
 
-        # if it's an opening bracket, find the closing bracket and return that. Advance the whole query.
+            elif word in ["{", "("]:
+                if word == "{":
+                    opposite = "}"
+                else:
+                    opposite = ")"
+                status = 0
+                for (closing_bracket, character) in enumerate(query):
+                    if character == word:
+                        status += 1
+                    if character == opposite:
+                        status -= 1
+                    if status == 0:
+                        break
+                if status != 0:
+                    raise Exception("Could not find a closing ", opposite)
 
-        elif word in ["{", "("]:
-            if word == "{":
-                opposite = "}"
+                word = query[: closing_bracket + 1]
+                query = query[closing_bracket + 1 :]
+
             else:
-                opposite = ")"
-            status = 0
-            for (closing_bracket, character) in enumerate(query):
-                if character == word:
-                    status += 1
-                if character == opposite:
-                    status -= 1
-                if status == 0:
-                    break
-            if status != 0:
-                raise Exception("Could not find a closing ", opposite)
+                query = query[first:]
 
-            word = query[: closing_bracket + 1]
-            query = query[closing_bracket + 1 :]
-
-        else:
-            query = query[first:]
-
-        # yield the word and the remaining query
-        yield word.strip(), query
-    yield None, None
+            # yield the word and the remaining query
+            yield word.strip(), query
+        yield None, None
 
 
 def gen_id(label, name):
