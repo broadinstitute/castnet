@@ -360,6 +360,30 @@ class CastNetConn:
             return convert_datetime(value)
         return param_type(value)
 
+    @staticmethod
+    def add_history(query, resource_id, method, requester=None, json_request=None):
+        params = {}
+        params["timeStamp"] = str(datetime.now().isoformat())
+        params["requester"] = requester
+        params["method"] = method
+        params["resourceId"] = resource_id
+        if method == "PATCH" or method == "POST":
+            query = (
+                query[:-13]
+                + """
+            \nWITH source
+            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId, jsonRequest: $jsonRequest})-[:RESOURCE_ID]->(source)\n
+            """
+                + query[-13:]
+            )
+            params["jsonRequest"] = str(json_request)
+        else:
+            query += """
+        \nWITH source
+        CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId})-[:RESOURCE_ID]->(source)
+        """
+        return query, params
+
     def generic_post(self, request, requester=None):
         """
         Creates a new record from a request and creates a historyRecord.
@@ -422,19 +446,10 @@ class CastNetConn:
             cypher, params = self.request_to_cypher(
                 label, params=request.json, method=request.method
             )
-            cypher = (
-                cypher[:-13]
-                + """
-            \nWITH source
-            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $email, method: $method, resourceId: $resourceId, jsonRequest: $jsonRequest})-[:RESOURCE_ID]->(source)\n
-            """
-                + cypher[-13:]
+            cypher, history_params = self.add_history(
+                cypher, params["source_id"], "POST", requester, request.json
             )
-            params["timeStamp"] = str(datetime.now().isoformat())
-            params["email"] = requester
-            params["method"] = "POST"
-            params["resourceId"] = params["source_id"]
-            params["jsonRequest"] = str(request.json)
+            params.update(history_params)
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
@@ -467,19 +482,11 @@ class CastNetConn:
             )
         try:
             cypher, params = self.request_to_cypher(label, resource_id, request.json)
-            cypher = (
-                cypher[:-13]
-                + """
-            \nWITH source
-            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $email, method: $method, resourceId: $resourceId, jsonRequest: $jsonRequest})-[:RESOURCE_ID]->(source)\n
-            """
-                + cypher[-13:]
+            cypher, history_params = self.add_history(
+                cypher, resource_id, "PATCH", requester, request.json
             )
-            params["timeStamp"] = str(datetime.now().isoformat())
-            params["email"] = requester
-            params["method"] = "PATCH"
-            params["resourceId"] = resource_id
-            params["jsonRequest"] = str(request.json)
+            params.update(history_params)
+
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
@@ -509,15 +516,10 @@ class CastNetConn:
                 )
 
         cypher, params = self.delete_cypher(label, resource_id)
-        cypher += """
-        \nWITH source
-        CREATE (n:historyRecord {timeStamp: $timeStamp, email: $email, method: $method, resourceId: $resourceId})-[:RESOURCE_ID]->(source)
-        """
-        params["timeStamp"] = str(datetime.now().isoformat())
-        params["email"] = requester
-        params["method"] = "DELETE"
-        params["resourceId"] = resource_id
-
+        cypher, history_params = self.add_history(
+            cypher, resource_id, "DELETE", requester
+        )
+        params.update(history_params)
         self.write(cypher, **params)
         return ("Deleted", 200)
 
