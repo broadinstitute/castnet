@@ -18,6 +18,7 @@ class CastNetConn:
         """
         if uri and user and password:
             self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        self.user = user
         self.schema = self._parse_schema(schema)
         self.url_key = url_key
 
@@ -82,9 +83,7 @@ class CastNetConn:
         result = [r for r in result]  # pylint: disable=unnecessary-comprehension
         return result
 
-    def request_to_cypher(
-        self, label, source_id="", params=None, method="PATCH"
-    ):
+    def request_to_cypher(self, label, source_id="", params=None, method="PATCH"):
         """
         Converts a request for PUT/PATCH, based on path, to a valid cypher query and
         its vars.
@@ -174,7 +173,10 @@ class CastNetConn:
         Converts request to a cypher delete statement
         """
         # Build the blocks
-        query = "MATCH\n(source:%s {id: $source_id})\nDETACH DELETE source" % label
+        query = (
+            "MATCH\n(source:%s {id: $source_id})\nREMOVE source:%s\nSET source:_archived_%s\nRETURN\nsource"
+            % (label, label, label)
+        )
 
         # build params
         params = {"source_id": source_id}
@@ -358,9 +360,36 @@ class CastNetConn:
             return convert_datetime(value)
         return param_type(value)
 
-    def generic_post(self, request):
+    @staticmethod
+    def add_history(query, resource_id, method, requester=None, json_request=None):
+        params = {
+            "timeStamp": str(datetime.now().isoformat()),
+            "requester": requester,
+            "method": method,
+            "resourceId": resource_id,
+        }
+        query = (
+            query[:-13]
+            + """
+            \nWITH source
+            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId"""
+            + (
+                (", jsonRequest: $jsonRequest")
+                if method == "PATCH" or method == "POST"
+                else ""
+            )
+            + "})-[:RESOURCE_ID]->(source)\n"
+            + query[-13:]
+        )
+
+        if method == "PATCH" or method == "POST":
+            params["jsonRequest"] = str(json_request)
+
+        return query, params
+
+    def generic_post(self, request, requester=None):
         """
-        Creates a new record from a request.
+        Creates a new record from a request and creates a historyRecord.
         request: Flask-Request like object, with attributes
             json: String, json payload from front end
             path: String, routing path, e.g "/birdfeeders"
@@ -420,6 +449,10 @@ class CastNetConn:
             cypher, params = self.request_to_cypher(
                 label, params=request.json, method=request.method
             )
+            cypher, history_params = self.add_history(
+                cypher, params["source_id"], "POST", requester, request.json
+            )
+            params.update(history_params)
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
@@ -431,9 +464,9 @@ class CastNetConn:
             400,
         )
 
-    def generic_patch(self, request):
+    def generic_patch(self, request, requester=None):
         """
-        Patches a record.
+        Patches a record and creates a historyRecord.
         request: Flask-Request like object, with attributes
             json: String, json payload from front end
             path: String, routing path containg the url label and the resource id
@@ -452,6 +485,11 @@ class CastNetConn:
             )
         try:
             cypher, params = self.request_to_cypher(label, resource_id, request.json)
+            cypher, history_params = self.add_history(
+                cypher, resource_id, "PATCH", requester, request.json
+            )
+            params.update(history_params)
+
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
@@ -463,8 +501,9 @@ class CastNetConn:
             400,
         )
 
-    def generic_delete(self, request):
-        """Deletes a record. Returns a tuple with data and status code"""
+    def generic_delete(self, request, requester=None):
+        """Deletes a record and creates a historyRecord. 
+        Returns a tuple with data and status code"""
         path_params = self.get_path(request.path)
         label = self.url_key[path_params[0]]
         path_params = self.get_path(request.path)
@@ -480,6 +519,10 @@ class CastNetConn:
                 )
 
         cypher, params = self.delete_cypher(label, resource_id)
+        cypher, history_params = self.add_history(
+            cypher, resource_id, "DELETE", requester
+        )
+        params.update(history_params)
         self.write(cypher, **params)
         return ("Deleted", 200)
 

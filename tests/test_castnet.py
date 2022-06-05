@@ -146,7 +146,10 @@ source"""
         query
         == """MATCH
 (source:InjectionSet {id: $source_id})
-DETACH DELETE source"""
+REMOVE source:InjectionSet
+SET source:_archived_InjectionSet
+RETURN
+source"""
     )
     assert val == {
         "source_id": "injectionset_id",
@@ -247,7 +250,10 @@ source"""
         query
         == """MATCH
 (source:Project {id: $source_id})
-DETACH DELETE source"""
+REMOVE source:Project
+SET source:_archived_Project
+RETURN
+source"""
     )
     assert val == {
         "source_id": "project_id",
