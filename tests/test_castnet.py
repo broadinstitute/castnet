@@ -147,7 +147,9 @@ source"""
         == """MATCH
 (source:InjectionSet {id: $source_id})
 REMOVE source:InjectionSet
-SET source:_archived_InjectionSet"""
+SET source:_archived_InjectionSet
+RETURN
+source"""
     )
     assert val == {
         "source_id": "injectionset_id",
@@ -249,7 +251,9 @@ source"""
         == """MATCH
 (source:Project {id: $source_id})
 REMOVE source:Project
-SET source:_archived_Project"""
+SET source:_archived_Project
+RETURN
+source"""
     )
     assert val == {
         "source_id": "project_id",
