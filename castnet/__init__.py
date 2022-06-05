@@ -174,7 +174,7 @@ class CastNetConn:
         """
         # Build the blocks
         query = (
-            "MATCH\n(source:%s {id: $source_id})\nREMOVE source:%s\nSET source:_archived_%s"
+            "MATCH\n(source:%s {id: $source_id})\nREMOVE source:%s\nSET source:_archived_%s\nRETURN\nsource"
             % (label, label, label)
         )
 
@@ -362,26 +362,29 @@ class CastNetConn:
 
     @staticmethod
     def add_history(query, resource_id, method, requester=None, json_request=None):
-        params = {}
-        params["timeStamp"] = str(datetime.now().isoformat())
-        params["requester"] = requester
-        params["method"] = method
-        params["resourceId"] = resource_id
-        if method == "PATCH" or method == "POST":
-            query = (
-                query[:-13]
-                + """
+        params = {
+            "timeStamp": str(datetime.now().isoformat()),
+            "requester": requester,
+            "method": method,
+            "resourceId": resource_id,
+        }
+        query = (
+            query[:-13]
+            + """
             \nWITH source
-            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId, jsonRequest: $jsonRequest})-[:RESOURCE_ID]->(source)\n
-            """
-                + query[-13:]
+            CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId"""
+            + (
+                (", jsonRequest: $jsonRequest")
+                if method == "PATCH" or method == "POST"
+                else ""
             )
+            + "})-[:RESOURCE_ID]->(source)\n"
+            + query[-13:]
+        )
+
+        if method == "PATCH" or method == "POST":
             params["jsonRequest"] = str(json_request)
-        else:
-            query += """
-        \nWITH source
-        CREATE (n:historyRecord {timeStamp: $timeStamp, email: $requester, method: $method, resourceId: $resourceId})-[:RESOURCE_ID]->(source)
-        """
+
         return query, params
 
     def generic_post(self, request, requester=None):
