@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from neo4j import GraphDatabase
+import json
 import pytz
 import shortuuid
 
@@ -383,7 +384,7 @@ class CastNetConn:
         )
 
         if method == "PATCH" or method == "POST":
-            params["jsonRequest"] = str(json_request)
+            params["jsonRequest"] = json.dumps(json_request)
 
         return query, params
 
