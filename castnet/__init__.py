@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 
 
 class CastNetConn:
@@ -341,10 +341,13 @@ class CastNetConn:
                 if isinstance(param_type, str):
                     relationship_params.append((key, value))
                 elif isinstance(param_type, list):
-                    if len(value) == 0:
-                        relationship_params.append((key, []))
-                    for v_single in value:
-                        relationship_params.append((key, v_single))
+                    if isinstance(value, str):
+                        relationship_params.append((key, value))
+                    else:
+                        if len(value) == 0:
+                            relationship_params.append((key, []))
+                        for v_single in value:
+                            relationship_params.append((key, v_single))
             else:
                 raise Exception(
                     f"Couldn't find {key} in attributes or relations for {label}"
@@ -594,8 +597,8 @@ class CastNetConn:
         attr_str = [f"{attr}: {c_varname}.{attr}" for attr in attributes]
 
         cypher += ",".join(attr_str)
-        # if "dir" in query:
-        #     cypher += ",__order: r.order_num"
+        if "dir" in query and "__order" in attributes:
+            cypher += ",__order: r.order_num"
 
         rel_str = [rel["name"] + ": " + rel["name"] for rel in relationships]
         if rel_str:
@@ -662,7 +665,7 @@ class CastNetConn:
                 attributes.append(parsed_subquery)
 
             # if it is an attribute for our active label, just append it
-            elif token in self.schema[label]["attributes"]:
+            elif token in self.schema[label]["attributes"] or token =="__order":
                 attributes.append(token)
 
             # if it's something else, complain

@@ -1,2 +1,3 @@
 /dist
 /castnet.egg-info
+/castnet/__pycache__
