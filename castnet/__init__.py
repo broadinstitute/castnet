@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
 
 
 class CastNetConn:
@@ -404,13 +404,6 @@ class CastNetConn:
         # check it has a name
         if not request.json["name"]:
             return ("You must specify a name.", 400)
-        # disallow forward slashes in names
-        if "/" in request.json["name"]:
-            return (
-                f"Forwarded slashes are not allowed in names. You provided: "
-                f"'{request.json['name']}'",
-                400,
-            )
         # check the required resource exists
         # Todo this should be atomic (but isn't)
         if "IS_IN" in self.schema[label]["relationships"]:
