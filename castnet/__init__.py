@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
 
 
 class CastNetConn:
@@ -617,60 +617,68 @@ class CastNetConn:
         token_generator = self._next_token(query_str)
         for token, remaining in token_generator:
             if token is None:
-                break
+                continue
 
-            # if it's a query, a graphql subquery, or a top level label
-            if (
-                token == "query"
-                or (not label and token in self.schema)
-                or token in self.schema[label]["graphql"]
-            ):
-                parsed_subquery = {}
-                # if its a query, get the label from the next item
-                if token == "query":
-                    new_label, _ = next(token_generator)
-                    token = new_label
+            # if it is an attribute for our active label, just append it and move on
+            if label and token in self.schema[label]["attributes"] or token == "__order":
+                attributes.append(token)
+                continue
 
-                # token is the label in this case
-                elif not label:
-                    new_label = token
+            # label could be None, token must exist
 
-                # its a rel like 'collaborationWith', get labelname and direction
-                else:
-                    new_label = self.schema[label]["graphql"][token]["lab"]
-                    parsed_subquery.update(
-                        {
-                            "dir": self.schema[label]["graphql"][token]["dir"],
-                            "rel": self.schema[label]["graphql"][token]["rel"],
-                        },
-                    )
+            # it will need a subquery
+            parsed_subquery = {}
 
-                if new_label not in self.schema:
-                    raise ValueError(f"{new_label} label not found in schema.")
+            # if its a query, get the next token
+            if token == "query":
+                token = None
+                while token is None:
+                    token, _ = next(token_generator)
 
-                subquery, _ = next(token_generator)
+            # quick check to see if it is a "alias: Label".
+            subquery_name = token
+            subquery_label = token
+            if (not label and ":" in token):
+                subquery_name = token.replace(":", "").strip()
+                subquery_label = None
+                while subquery_label is None:
+                    subquery_label, _ = next(token_generator)
 
-                # if there is a condition, add it in and get the next
-                if subquery.startswith("("):
-                    parsed_subquery.update({"condition": subquery})
-                    subquery, _ = next(token_generator)
-
+            # if it's a rel like 'collaborationWith', get labelname and direction
+            # label must exist for this
+            if label and token in self.schema[label]["graphql"]:
+                subquery_label = self.schema[label]["graphql"][token]["lab"]
                 parsed_subquery.update(
                     {
-                        "name": token,
-                        "attributes": self._gql_to_ast(subquery, new_label),
-                        "label": new_label,
-                    }
+                        "dir": self.schema[label]["graphql"][token]["dir"],
+                        "rel": self.schema[label]["graphql"][token]["rel"],
+                    },
                 )
-                attributes.append(parsed_subquery)
 
-            # if it is an attribute for our active label, just append it
-            elif token in self.schema[label]["attributes"] or token =="__order":
-                attributes.append(token)
+            # check if the new label is in the schema, else complain
+            print("subquery label: ", subquery_label)
+            if subquery_label not in self.schema:
+                raise ValueError(f"{subquery_label} label not found in schema.")
 
-            # if it's something else, complain
-            else:
-                raise ValueError(f"{repr(token)} not found in {label}")
+            subquery, _ = next(token_generator)
+
+            # Only conditions start with "("
+            # if there is a condition, add it in and get the next
+            if subquery.startswith("("):
+                parsed_subquery.update({"condition": subquery})
+                subquery, _ = next(token_generator)
+
+            parsed_subquery.update(
+                {
+                    "name": subquery_name, # alias, toplevel lable or graphql
+                    "attributes": self._gql_to_ast(subquery, subquery_label),
+                    "label": subquery_label, # actual label name in the database
+                }
+            )
+
+            attributes.append(parsed_subquery)
+
+
         return attributes
 
     @staticmethod

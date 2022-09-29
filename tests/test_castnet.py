@@ -303,7 +303,9 @@ Project(id: $id){
         ledBy{name}
     }
     Instrument{name injectionSets{name}}
+    AllProjects: Project{name}
 }
+
     """
     cypher = CONN.gql_to_cypher(query)
     assert (
@@ -342,5 +344,10 @@ RETURN COLLECT({name: a_1_1.name}) as injectionSets
 }
 RETURN COLLECT({name: a_1.name,injectionSets: injectionSets}) as Instrument
 }
-RETURN Project,Instrument"""
+CALL {
+MATCH (a_1:Project)
+UNWIND a_1 as a_1_s
+RETURN COLLECT({name: a_1.name}) as AllProjects
+}
+RETURN Project,Instrument,AllProjects"""
     )
