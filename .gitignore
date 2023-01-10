@@ -1,3 +1,4 @@
-/dist
-/castnet.egg-info
-/castnet/__pycache__
+dist/
+castnet.egg-info/
+castnet/__pycache__/
+__pycache__/
