@@ -42,13 +42,19 @@ class CastNetConn:
                 temp_dict.update(schema[key]["relationships"])
             new_schema[key]["relationships"] = temp_dict
 
+            # build relationships
+            temp_callbacks = []
+            if "callbacks" in schema[key]:
+                temp_callbacks = schema[key]['callbacks']
+            new_schema[key]["callbacks"] = temp_callbacks
+
             # build graphql
             temp_dict = {}
             if "graphql" in schema[key]:
                 temp_dict.update(schema[key]["graphql"])
             new_schema[key]["graphql"] = temp_dict
 
-            # creeate a IS_IN relationship
+            # create a IS_IN relationship
             if "IS_IN" in schema[key]:
                 new_schema[key]["relationships"]["IS_IN"] = schema[key]["IS_IN"]
                 new_schema[key]["graphql"]["isIn"] = {
@@ -453,13 +459,21 @@ class CastNetConn:
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
-        if len(records) >= 1:
-            return ([dict(r["source"]) for r in records], 200)
-        return (
-            f"Error creating new {label}. Your fields might be the wrong type,"
-            f" or the connections might not exist.",
-            400,
-        )
+
+
+        if len(records) == 0:
+            return (
+                f"Error creating new {label}. Your fields might be the wrong type,"
+                f" or the connections might not exist.",
+                400,
+            )
+
+        # execute a callback
+        for callback in self.schema[label]["callbacks"]:
+            if "POST" in callback['methods'] and set(params.keys()).intersection(set(callback['attributes'])):
+                callback['callback'](params)
+
+        return ([dict(r["source"]) for r in records], 200)
 
     def generic_patch(self, request, requester=None):
         """
@@ -490,13 +504,20 @@ class CastNetConn:
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
-        if len(records) >= 1:
-            return (dict(records[0][0]), 200)
-        return (
-            f"Error updating {label}. It may not exist, or your entries might be"
-            f" the wrong type.",
-            400,
-        )
+        if len(records) == 0:
+            return (
+                f"Error updating {label}. It may not exist, or your entries might be"
+                f" the wrong type.",
+                400,
+            )
+
+        # execute a callback
+        print(label)
+        for callback in self.schema[label]["callbacks"]:
+            if "PATCH" in callback['methods'] and set(params.keys()).intersection(set(callback['attributes'])):
+                callback['callback'](params)
+        return (dict(records[0][0]), 200)
+
 
     def generic_delete(self, request, requester=None):
         """Deletes a record and creates a historyRecord. 
@@ -521,6 +542,10 @@ class CastNetConn:
         )
         params.update(history_params)
         self.write(cypher, **params)
+        for callback in self.schema[label]["callbacks"]:
+            if "DELETE" in callback['methods']:
+                callback['callback'](params)
+
         return ("Deleted", 200)
 
     def generic_graphql(self, request):
