@@ -512,7 +512,6 @@ class CastNetConn:
             )
 
         # execute a callback
-        print(label)
         for callback in self.schema[label]["callbacks"]:
             if "PATCH" in callback['methods'] and set(params.keys()).intersection(set(callback['attributes'])):
                 callback['callback'](params)
@@ -674,7 +673,6 @@ class CastNetConn:
                 )
 
             # check if the new label is in the schema, else complain
-            print("subquery label: ", subquery_label)
             if subquery_label not in self.schema:
                 raise ValueError(f"{subquery_label} label not found in schema.")
 
