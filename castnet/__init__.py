@@ -45,7 +45,7 @@ class CastNetConn:
             # build relationships
             temp_callbacks = []
             if "callbacks" in schema[key]:
-                temp_callbacks = schema[key]['callbacks']
+                temp_callbacks = schema[key]["callbacks"]
             new_schema[key]["callbacks"] = temp_callbacks
 
             # build graphql
@@ -460,7 +460,6 @@ class CastNetConn:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
 
-
         if len(records) == 0:
             return (
                 f"Error creating new {label}. Your fields might be the wrong type,"
@@ -470,8 +469,10 @@ class CastNetConn:
 
         # execute a callback
         for callback in self.schema[label]["callbacks"]:
-            if "POST" in callback['methods'] and set(params.keys()).intersection(set(callback['attributes'])):
-                callback['callback'](params)
+            if "POST" in callback["methods"] and set(params.keys()).intersection(
+                set(callback["attributes"])
+            ):
+                callback["callback"](params)
 
         return ([dict(r["source"]) for r in records], 200)
 
@@ -513,13 +514,14 @@ class CastNetConn:
 
         # execute a callback
         for callback in self.schema[label]["callbacks"]:
-            if "PATCH" in callback['methods'] and set(params.keys()).intersection(set(callback['attributes'])):
-                callback['callback'](params)
+            if "PATCH" in callback["methods"] and set(params.keys()).intersection(
+                set(callback["attributes"])
+            ):
+                callback["callback"](params)
         return (dict(records[0][0]), 200)
 
-
     def generic_delete(self, request, requester=None):
-        """Deletes a record and creates a historyRecord. 
+        """Deletes a record and creates a historyRecord.
         Returns a tuple with data and status code"""
         path_params = self.get_path(request.path)
         label = self.url_key[path_params[0]]
@@ -542,8 +544,8 @@ class CastNetConn:
         params.update(history_params)
         self.write(cypher, **params)
         for callback in self.schema[label]["callbacks"]:
-            if "DELETE" in callback['methods']:
-                callback['callback'](params)
+            if "DELETE" in callback["methods"]:
+                callback["callback"](params)
 
         return ("Deleted", 200)
 
@@ -637,7 +639,11 @@ class CastNetConn:
                 continue
 
             # if it is an attribute for our active label, just append it and move on
-            if label and token in self.schema[label]["attributes"] or token == "__order":
+            if (
+                label
+                and token in self.schema[label]["attributes"]
+                or token == "__order"
+            ):
                 attributes.append(token)
                 continue
 
@@ -655,7 +661,7 @@ class CastNetConn:
             # quick check to see if it is a "alias: Label".
             subquery_name = token
             subquery_label = token
-            if (not label and ":" in token):
+            if not label and ":" in token:
                 subquery_name = token.replace(":", "").strip()
                 subquery_label = None
                 while subquery_label is None:
@@ -686,14 +692,13 @@ class CastNetConn:
 
             parsed_subquery.update(
                 {
-                    "name": subquery_name, # alias, toplevel lable or graphql
+                    "name": subquery_name,  # alias, toplevel lable or graphql
                     "attributes": self._gql_to_ast(subquery, subquery_label),
-                    "label": subquery_label, # actual label name in the database
+                    "label": subquery_label,  # actual label name in the database
                 }
             )
 
             attributes.append(parsed_subquery)
-
 
         return attributes
 
