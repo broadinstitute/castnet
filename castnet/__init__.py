@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.11"
+__version__ = "0.0.12"
 
 
 class CastNetConn:
@@ -42,13 +42,19 @@ class CastNetConn:
                 temp_dict.update(schema[key]["relationships"])
             new_schema[key]["relationships"] = temp_dict
 
+            # build relationships
+            temp_callbacks = []
+            if "callbacks" in schema[key]:
+                temp_callbacks = schema[key]["callbacks"]
+            new_schema[key]["callbacks"] = temp_callbacks
+
             # build graphql
             temp_dict = {}
             if "graphql" in schema[key]:
                 temp_dict.update(schema[key]["graphql"])
             new_schema[key]["graphql"] = temp_dict
 
-            # creeate a IS_IN relationship
+            # create a IS_IN relationship
             if "IS_IN" in schema[key]:
                 new_schema[key]["relationships"]["IS_IN"] = schema[key]["IS_IN"]
                 new_schema[key]["graphql"]["isIn"] = {
@@ -453,13 +459,22 @@ class CastNetConn:
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
-        if len(records) >= 1:
-            return ([dict(r["source"]) for r in records], 200)
-        return (
-            f"Error creating new {label}. Your fields might be the wrong type,"
-            f" or the connections might not exist.",
-            400,
-        )
+
+        if len(records) == 0:
+            return (
+                f"Error creating new {label}. Your fields might be the wrong type,"
+                f" or the connections might not exist.",
+                400,
+            )
+
+        # execute a callback
+        for callback in self.schema[label]["callbacks"]:
+            if "POST" in callback["methods"] and set(params.keys()).intersection(
+                set(callback["attributes"])
+            ):
+                callback["callback"](params)
+
+        return ([dict(r["source"]) for r in records], 200)
 
     def generic_patch(self, request, requester=None):
         """
@@ -490,16 +505,23 @@ class CastNetConn:
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
         records = self.write(cypher, **params)
-        if len(records) >= 1:
-            return (dict(records[0][0]), 200)
-        return (
-            f"Error updating {label}. It may not exist, or your entries might be"
-            f" the wrong type.",
-            400,
-        )
+        if len(records) == 0:
+            return (
+                f"Error updating {label}. It may not exist, or your entries might be"
+                f" the wrong type.",
+                400,
+            )
+
+        # execute a callback
+        for callback in self.schema[label]["callbacks"]:
+            if "PATCH" in callback["methods"] and set(params.keys()).intersection(
+                set(callback["attributes"])
+            ):
+                callback["callback"](params)
+        return (dict(records[0][0]), 200)
 
     def generic_delete(self, request, requester=None):
-        """Deletes a record and creates a historyRecord. 
+        """Deletes a record and creates a historyRecord.
         Returns a tuple with data and status code"""
         path_params = self.get_path(request.path)
         label = self.url_key[path_params[0]]
@@ -521,6 +543,10 @@ class CastNetConn:
         )
         params.update(history_params)
         self.write(cypher, **params)
+        for callback in self.schema[label]["callbacks"]:
+            if "DELETE" in callback["methods"]:
+                callback["callback"](params)
+
         return ("Deleted", 200)
 
     def generic_graphql(self, request):
@@ -613,7 +639,11 @@ class CastNetConn:
                 continue
 
             # if it is an attribute for our active label, just append it and move on
-            if label and token in self.schema[label]["attributes"] or token == "__order":
+            if (
+                label
+                and token in self.schema[label]["attributes"]
+                or token == "__order"
+            ):
                 attributes.append(token)
                 continue
 
@@ -631,7 +661,7 @@ class CastNetConn:
             # quick check to see if it is a "alias: Label".
             subquery_name = token
             subquery_label = token
-            if (not label and ":" in token):
+            if not label and ":" in token:
                 subquery_name = token.replace(":", "").strip()
                 subquery_label = None
                 while subquery_label is None:
@@ -649,7 +679,6 @@ class CastNetConn:
                 )
 
             # check if the new label is in the schema, else complain
-            print("subquery label: ", subquery_label)
             if subquery_label not in self.schema:
                 raise ValueError(f"{subquery_label} label not found in schema.")
 
@@ -663,14 +692,13 @@ class CastNetConn:
 
             parsed_subquery.update(
                 {
-                    "name": subquery_name, # alias, toplevel lable or graphql
+                    "name": subquery_name,  # alias, toplevel lable or graphql
                     "attributes": self._gql_to_ast(subquery, subquery_label),
-                    "label": subquery_label, # actual label name in the database
+                    "label": subquery_label,  # actual label name in the database
                 }
             )
 
             attributes.append(parsed_subquery)
-
 
         return attributes
 
