@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.12"
+__version__ = "0.0.13"
 
 
 class CastNetConn:
@@ -125,6 +125,9 @@ class CastNetConn:
         create_target = []
         rels_to_delete = set()
         for i, (conn_name, target_id) in enumerate(target_ids):
+            if conn_name not in cypher_vars:
+                cypher_vars[conn_name] = []
+            cypher_vars[conn_name].append(target_id)
             n_target_var = f"target_{i}"
             tlabel = self.schema[label]["relationships"][conn_name]
             if isinstance(tlabel, list):
@@ -469,8 +472,15 @@ class CastNetConn:
 
         # execute a callback
         for callback in self.schema[label]["callbacks"]:
-            if "POST" in callback["methods"] and set(params.keys()).intersection(
-                set(callback["attributes"])
+            if "POST" in callback["methods"] and (
+                (
+                    "attributes" in callback
+                    and set(params.keys()).intersection(set(callback["attributes"]))
+                )
+                or (
+                    "relationships" in callback
+                    and set(params.keys()).intersection(set(callback["relationships"]))
+                )
             ):
                 callback["callback"](params)
 
@@ -514,8 +524,15 @@ class CastNetConn:
 
         # execute a callback
         for callback in self.schema[label]["callbacks"]:
-            if "PATCH" in callback["methods"] and set(params.keys()).intersection(
-                set(callback["attributes"])
+            if "PATCH" in callback["methods"] and (
+                (
+                    "attributes" in callback
+                    and set(params.keys()).intersection(set(callback["attributes"]))
+                )
+                or (
+                    "relationships" in callback
+                    and set(params.keys()).intersection(set(callback["relationships"]))
+                )
             ):
                 callback["callback"](params)
         return (dict(records[0][0]), 200)
