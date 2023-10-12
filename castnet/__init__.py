@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.13"
+__version__ = "0.0.14"
 
 
 class CastNetConn:
@@ -321,7 +321,7 @@ class CastNetConn:
             if key in self.schema[label]["attributes"]:
                 param_type = self.schema[label]["attributes"][key]
                 # If there is no value, it is none
-                if not value:
+                if value is None or value == "":
                     attribute_params[key] = None
                 # dates are cast to ISO format
                 elif param_type in [datetime, date]:
