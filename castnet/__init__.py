@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.14"
+__version__ = "0.0.15"
 
 
 class CastNetConn:
@@ -427,7 +427,11 @@ class CastNetConn:
                 f"MATCH (a:{req_label} {{id: $id}}) OPTIONAL MATCH "
                 f"(a)-[:IS_IN]-(b:{label}) RETURN a, b"
             )
-            records = self.read(cypher, id=request.json["IS_IN"])
+            try:
+                records = self.read(cypher, id=request.json["IS_IN"])
+            except Exception as err:  # pylint: disable=broad-except
+                return (f"There was an error: {err}", 400)
+
             if len(records) == 0:
                 return (
                     f"The resource id {request.json['IS_IN']} does not match any "
@@ -444,7 +448,10 @@ class CastNetConn:
             # if it's top level, check that no other resource exists with that name
             # Todo this should be atomic but isn't
             cypher = f"MATCH (a:{label} {{name: $name}}) RETURN a"
-            records = self.read(cypher, name=request.json["name"])
+            try:
+                records = self.read(cypher, name=request.json["name"])
+            except Exception as err:  # pylint: disable=broad-except
+                return (f"There was an error: {err}", 400)
             if len(records) > 0:
                 return (
                     "You already have a resource with that name.",
@@ -461,7 +468,10 @@ class CastNetConn:
             params.update(history_params)
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
-        records = self.write(cypher, **params)
+        try:
+            records = self.write(cypher, **params)
+        except Exception as err:  # pylint: disable=broad-except
+            return (f"There was an error: {err}", 400)
 
         if len(records) == 0:
             return (
@@ -514,7 +524,10 @@ class CastNetConn:
 
         except (KeyError, ValueError) as err:
             return (f"There was an error: {err}", 400)
-        records = self.write(cypher, **params)
+        try:
+            records = self.write(cypher, **params)
+        except Exception as err:  # pylint: disable=broad-except
+            return (f"There was an error: {err}", 400)
         if len(records) == 0:
             return (
                 f"Error updating {label}. It may not exist, or your entries might be"
@@ -546,7 +559,10 @@ class CastNetConn:
         resource_id = path_params[1]
         dependency_query = self._check_dependencies(path_params[0])
         if dependency_query:
-            num_dependencies = len(self.read(dependency_query, id=resource_id))
+            try:
+                num_dependencies = len(self.read(dependency_query, id=resource_id))
+            except Exception as err:  # pylint: disable=broad-except
+                return (f"There was an error: {err}", 400)
             if num_dependencies > 0:
                 return (
                     "Your resource still has dependencies and "
@@ -559,7 +575,10 @@ class CastNetConn:
             cypher, resource_id, "DELETE", requester
         )
         params.update(history_params)
-        self.write(cypher, **params)
+        try:
+            self.write(cypher, **params)
+        except Exception as err:  # pylint: disable=broad-except
+            return (f"There was an error: {err}", 400)
         for callback in self.schema[label]["callbacks"]:
             if "DELETE" in callback["methods"]:
                 callback["callback"](params)
@@ -576,7 +595,10 @@ class CastNetConn:
             params = {}
         if not params:
             params = {}
-        results = self.read_graphql(query, **params)
+        try:
+            results = self.read_graphql(query, **params)
+        except Exception as err:  # pylint: disable=broad-except
+            return (f"There was an error: {err}", 400)
         return ([True, {"data": results}], 200)
 
     @staticmethod
@@ -772,7 +794,7 @@ class CastNetConn:
                 else:
                     opposite = ")"
                 status = 0
-                for (closing_bracket, character) in enumerate(query):
+                for closing_bracket, character in enumerate(query):
                     if character == word:
                         status += 1
                     if character == opposite:
