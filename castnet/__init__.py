@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 
 
 class CastNetConn:
@@ -13,13 +13,16 @@ class CastNetConn:
     CastNetConn is a class which handles a connection to a database.
     """
 
-    def __init__(self, uri, user, password, schema, url_key):
+    def __init__(self, uri, user, password, schema, url_key, eager=False):
         """
         Connects to a database
         """
-        if uri and user and password:
+        self.driver = None
+        if uri and user and password and eager:
             self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        self.uri = uri
         self.user = user
+        self.password = password
         self.schema = self._parse_schema(schema)
         self.url_key = url_key
 
@@ -228,13 +231,21 @@ class CastNetConn:
         """
         Closes a database
         """
-        self.driver.close()
+        try:
+            self.driver.close()
+        except Exception:
+            pass
 
     def read(self, query, **kwargs):
         """
         Reads from a Cypher query
         """
-        with self.driver.session() as session:
+        try:
+            session = self.driver.session()
+        except Exception:
+            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            session = self.driver.session()
+        with session:
             # Write transactions allow the driver to handle retries and transient errors
             result = session.read_transaction(self._submit_query, query, **kwargs)
         return result
@@ -243,7 +254,12 @@ class CastNetConn:
         """
         Writes from a cypher query
         """
-        with self.driver.session() as session:
+        try:
+            session = self.driver.session()
+        except Exception:
+            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            session = self.driver.session()
+        with session:
             # Write transactions allow the driver to handle retries and transient errors
             result = session.write_transaction(self._submit_query, query, **kwargs)
 
@@ -253,7 +269,12 @@ class CastNetConn:
         """
         Auto commit, use is discouraged
         """
-        with self.driver.session() as session:
+        try:
+            session = self.driver.session()
+        except Exception:
+            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            session = self.driver.session()
+        with session:
             # Write transactions allow the driver to handle retries and transient errors
             result = session.run(query, **kwargs)
 
