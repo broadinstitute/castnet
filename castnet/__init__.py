@@ -236,33 +236,62 @@ class CastNetConn:
         except Exception:
             pass
 
-    def read(self, query, **kwargs):
+    def read(self, query, max_retries=3, **kwargs):
         """
         Reads from a Cypher query
         """
-        try:
-            session = self.driver.session()
-        except Exception:
-            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
-            session = self.driver.session()
-        with session:
-            # Write transactions allow the driver to handle retries and transient errors
-            result = session.read_transaction(self._submit_query, query, **kwargs)
+        if not self.driver:
+            self.driver = GraphDatabase.driver(
+                self.uri, auth=(self.user, self.password)
+            )
+        retries = 0
+        result = None
+        # retry transaction up to max_retries times, not including original attempt
+        while True:
+            with self.driver.session() as session:
+                try:
+                    # Read transactions allow the driver to handle retries for transient errors
+                    result = session.read_transaction(
+                        self._submit_query, query, **kwargs
+                    )
+                    break
+                except Exception as e:  # pylint: disable=broad-except
+                    retries += 1
+                    if retries > max_retries:
+                        raise e
+                    self.driver.close()
+                    self.driver = GraphDatabase.driver(
+                        self.uri, auth=(self.user, self.password)
+                    )
         return result
 
-    def write(self, query, **kwargs):
+    def write(self, query, max_retries=3, **kwargs):
         """
         Writes from a cypher query
         """
-        try:
-            session = self.driver.session()
-        except Exception:
-            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
-            session = self.driver.session()
-        with session:
-            # Write transactions allow the driver to handle retries and transient errors
-            result = session.write_transaction(self._submit_query, query, **kwargs)
-
+        if not self.driver:
+            self.driver = GraphDatabase.driver(
+                self.uri, auth=(self.user, self.password)
+            )
+        retries = 0
+        result = None
+        # retry transaction up to max_retries times, not including original attempt
+        while True:
+            with self.driver.session() as session:
+                try:
+                    # Write transactions allow the driver to handle retries for transient errors
+                    result = session.write_transaction(
+                        self._submit_query, query, **kwargs
+                    )
+                    break
+                except Exception as e:  # pylint: disable=broad-except
+                    retries += 1
+                    if retries > max_retries:
+                        raise e
+                    self.driver.close()
+                    self.driver = GraphDatabase.driver(
+                        self.uri, auth=(self.user, self.password)
+                    )
         return result
 
     def auto_commit(self, query, **kwargs):
@@ -272,10 +301,14 @@ class CastNetConn:
         try:
             session = self.driver.session()
         except Exception:
-            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            if self.driver:
+                self.driver.close()
+            self.driver = GraphDatabase.driver(
+                self.uri, auth=(self.user, self.password)
+            )
             session = self.driver.session()
         with session:
-            # Write transactions allow the driver to handle retries and transient errors
+            # unmanaged transaction, driver will not handle retries or transient errors
             result = session.run(query, **kwargs)
 
         return result
