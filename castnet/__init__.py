@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.17"
+__version__ = "0.0.18"
 
 
 class CastNetConn:
@@ -873,8 +873,8 @@ def gen_id(label, name):
     """Generates and ID for a node"""
     name = str(name)
     uuid = shortuuid.ShortUUID().random(length=8)
-    # remove for gcp bucket compatibility
-    disallowed = '\\\n\t/_*?"<>|.: '
+    # remove for gcp bucket and uri compatibility
+    disallowed = '\\\n\t/_*?"<>|.: #&+'
     for character in disallowed:
         name = name.replace(character, "")
     datestr = datetime.now(tz=pytz.timezone("US/Eastern")).strftime("%Y%m%d")
