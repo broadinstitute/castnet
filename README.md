@@ -1,4 +1,6 @@
 # CastNet
+<img src="https://github.com/user-attachments/assets/26e3ead1-16fc-4e4e-8ce4-09ea08fe430a" alt="CastNet Logo" width="50%"/>
+
 *** This package is in the very early stages of testing. Do not use for production. ***
 
 `pip install castnet`
