@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.0.18"
+__version__ = "0.1.0"
 
 
 class CastNetConn:
@@ -251,9 +251,10 @@ class CastNetConn:
             with self.driver.session() as session:
                 try:
                     # Read transactions allow the driver to handle retries for transient errors
-                    result = session.read_transaction(
-                        self._submit_query, query, **kwargs
-                    )
+                    if hasattr(session, "execute_read"):
+                        result = session.execute_read(self._submit_query, query, **kwargs)
+                    else:
+                        result = session.read_transaction(self._submit_query, query, **kwargs)
                     break
                 except Exception as e:  # pylint: disable=broad-except
                     retries += 1
@@ -279,10 +280,11 @@ class CastNetConn:
         while True:
             with self.driver.session() as session:
                 try:
-                    # Write transactions allow the driver to handle retries for transient errors
-                    result = session.write_transaction(
-                        self._submit_query, query, **kwargs
-                    )
+                    # Write transactions allow the driver to handle retries and transient errors
+                    if hasattr(session, "execute_write"):
+                        result = session.execute_write(self._submit_query, query, **kwargs)
+                    else:
+                        result = session.write_transaction(self._submit_query, query, **kwargs)
                     break
                 except Exception as e:  # pylint: disable=broad-except
                     retries += 1
