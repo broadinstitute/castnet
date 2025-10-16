@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 class CastNetConn:
@@ -716,7 +716,9 @@ class CastNetConn:
 
         rel_str = [rel["name"] + ": " + rel["name"] for rel in relationships]
         if rel_str:
-            cypher += "," + ",".join(rel_str)
+            if attr_str:
+                cypher += ','
+            cypher += ",".join(rel_str)
         cypher += "}) as " + name
 
         return cypher
