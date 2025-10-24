@@ -677,7 +677,7 @@ class CastNetConn:
             returns = []
             for i, single_query in enumerate(query):
                 returns.append(single_query["name"])
-                cypher += "CALL {\n"
+                cypher += "CALL (){\n"
                 cypher += self._ast_to_cypher(single_query, p_varname=p_varname)
                 cypher += "\n}\n"
             cypher += "RETURN " + ",".join(returns)
