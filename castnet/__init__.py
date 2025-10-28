@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 class CastNetConn:
@@ -702,7 +702,7 @@ class CastNetConn:
 
         cypher += f"\nUNWIND {c_varname} as {c_varname + '_s'}"
         for rel in relationships:
-            cypher += f"\nCALL {{\nWITH {c_varname+'_s'}\n"
+            cypher += f"\nCALL ({c_varname+'_s'}){{\nWITH {c_varname+'_s'}\n"
             cypher += self._ast_to_cypher(rel, c_varname)
             cypher += "\n}"
 
