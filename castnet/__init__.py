@@ -5,7 +5,7 @@ import pytz
 import shortuuid
 
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 class CastNetConn:
@@ -708,7 +708,7 @@ class CastNetConn:
 
         # create a return collect with attributes and subqueries
         cypher += "\nRETURN COLLECT({"
-        attr_str = [f"{attr}: {c_varname}.{attr}" for attr in attributes]
+        attr_str = [f"{attr}: {c_varname}.{attr}" for attr in attributes if attr != "__order"]
 
         cypher += ",".join(attr_str)
         if "dir" in query and "__order" in attributes:
